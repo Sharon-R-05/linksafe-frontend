@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LinkSafe - Fraud Detection Tool</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .warning {
+            background: #fef2f2;
+            border-left: 4px solid #ef4444;
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+        }
+        button {
+            padding: 15px 30px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #dc2626;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .status {
+            background: #10b981;
+            color: white;
+            padding: 10px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 30px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #ef4444;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .result {
+            display: none;
+            margin-top: 30px;
+        }
+        img {
+            max-width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            border: 1px solid #e2e8f0;
+        }
+        .url-info {
+            background: #f1f5f9;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            word-break: break-all;
+            font-size: 14px;
+        }
+        .alert {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        .alert-success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .btn-save {
+            background: #4f46e5;
+        }
+        .btn-save:hover {
+            background: #4338ca;
+        }
+        .btn-new {
+            background: #6b7280;
+        }
+        .btn-new:hover {
+            background: #4b5563;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ LinkSafe</h1>
+            <p>Scan suspicious links BEFORE clicking them</p>
+        </div>
+
+        <div class="card">
+            <div class="warning">
+                ⚠️ Never enter personal information on suspicious websites. Use this tool to preview links first.
+            </div>
+
+            <div id="status" class="status">🔄 Checking backend connection...</div>
+
+            <div class="input-group">
+                <input type="text" id="urlInput" placeholder="https://example.com/suspicious-link">
+                <button id="scanBtn">🛡️ SCAN NOW</button>
+            </div>
+
+            <div id="alert" class="alert"></div>
+
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 10px;">Safely capturing screenshot...</p>
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">First scan takes 15-20 seconds (backend waking up)</p>
+            </div>
+
+            <div id="result" class="result">
+                <div class="url-info" id="urlInfo"></div>
+                <img id="screenshot" alt="Website preview">
+                <div class="button-group">
+                    <button id="downloadBtn" class="btn-save">💾 Save Evidence</button>
+                    <button id="newBtn" class="btn-new">🔄 New Scan</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Your working backend URL
+        const BACKEND_URL = 'https://linksafe-backend-a4lm.onrender.com';
+        
+        class LinkSafe {
+            constructor() {
+                this.screenshot = null;
+                this.init();
+                this.checkBackend();
+            }
+
+            async checkBackend() {
+                const statusDiv = document.getElementById('status');
+                try {
+                    const response = await fetch(`${BACKEND_URL}/health`);
+                    if (response.ok) {
+                        statusDiv.innerHTML = '✅ Backend Connected - Ready to Scan';
+                        statusDiv.style.background = '#10b981';
+                    } else {
+                        throw new Error('Backend error');
+                    }
+                } catch (error) {
+                    statusDiv.innerHTML = '⚠️ Backend Starting - First scan may take 20 seconds';
+                    statusDiv.style.background = '#f59e0b';
+                }
+            }
+
+            init() {
+                document.getElementById('scanBtn').onclick = () => this.scan();
+                document.getElementById('downloadBtn').onclick = () => this.download();
+                document.getElementById('newBtn').onclick = () => this.reset();
+                document.getElementById('urlInput').onkeypress = (e) => {
+                    if (e.key === 'Enter') this.scan();
+                };
+            }
+
+            async scan() {
+                let url = document.getElementById('urlInput').value.trim();
+                if (!url) {
+                    this.showAlert('Please enter a URL to scan', 'error');
+                    return;
+                }
+
+                if (!url.startsWith('http')) {
+                    url = 'https://' + url;
+                }
+
+                this.showLoading(true);
+                this.hideResult();
+                this.showAlert('🔍 Scanning link safely...', 'success');
+                
+                try {
+                    const response = await fetch(`${BACKEND_URL}/fetch-screen`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: url })
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || 'Failed to capture');
+                    }
+
+                    const imgData = await response.text();
+                    this.screenshot = imgData;
+                    
+                    document.getElementById('screenshot').src = imgData;
+                    document.getElementById('urlInfo').innerHTML = `<strong>🔗 Scanned URL:</strong><br>${this.escapeHtml(url)}<br><br><small>⚠️ Always verify the website looks legitimate before entering any information</small>`;
+                    document.getElementById('result').style.display = 'block';
+                    this.showAlert('✅ Screenshot captured safely! Review before clicking the actual link.', 'success');
+                    
+                } catch (error) {
+                    console.error('Scan error:', error);
+                    this.showAlert('❌ Failed to scan. Backend may be waking up. Try again in 30 seconds.', 'error');
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+
+            download() {
+                if (this.screenshot) {
+                    const link = document.createElement('a');
+                    link.download = `linksafe-${Date.now()}.png`;
+                    link.href = this.screenshot;
+                    link.click();
+                    this.showAlert('💾 Evidence saved to your device', 'success');
+                }
+            }
+
+            reset() {
+                document.getElementById('result').style.display = 'none';
+                document.getElementById('urlInput').value = '';
+                this.screenshot = null;
+            }
+
+            showLoading(show) {
+                document.getElementById('loading').style.display = show ? 'block' : 'none';
+                document.getElementById('scanBtn').disabled = show;
+                document.getElementById('scanBtn').innerHTML = show ? '⏳ SCANNING...' : '🛡️ SCAN NOW';
+            }
+
+            hideResult() {
+                document.getElementById('result').style.display = 'none';
+            }
+
+            showAlert(msg, type) {
+                const alert = document.getElementById('alert');
+                alert.className = `alert alert-${type}`;
+                alert.innerHTML = msg;
+                alert.style.display = 'block';
+                setTimeout(() => alert.style.display = 'none', 5000);
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+
+        new LinkSafe();
+    </script>
+</body>
+</html>
