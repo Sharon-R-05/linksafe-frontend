@@ -80,6 +80,9 @@
             margin-bottom: 20px;
             font-size: 14px;
         }
+        .status.error {
+            background: #ef4444;
+        }
         .loading {
             display: none;
             text-align: center;
@@ -149,6 +152,15 @@
         .btn-new:hover {
             background: #4b5563;
         }
+        .debug-info {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 11px;
+            color: #666;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -163,10 +175,10 @@
                 ⚠️ Never enter personal information on suspicious websites. Use this tool to preview links first.
             </div>
 
-            <div id="status" class="status">🔄 Checking backend connection...</div>
+            <div id="status" class="status">🔄 Checking backend...</div>
 
             <div class="input-group">
-                <input type="text" id="urlInput" placeholder="https://example.com/suspicious-link">
+                <input type="text" id="urlInput" placeholder="https://google.com">
                 <button id="scanBtn">🛡️ SCAN NOW</button>
             </div>
 
@@ -175,7 +187,7 @@
             <div id="loading" class="loading">
                 <div class="spinner"></div>
                 <p style="margin-top: 10px;">Safely capturing screenshot...</p>
-                <p style="font-size: 12px; color: #666; margin-top: 5px;">First scan takes 15-20 seconds (backend waking up)</p>
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">This may take 15-20 seconds</p>
             </div>
 
             <div id="result" class="result">
@@ -186,11 +198,13 @@
                     <button id="newBtn" class="btn-new">🔄 New Scan</button>
                 </div>
             </div>
+
+            <div id="debugInfo" class="debug-info"></div>
         </div>
     </div>
 
     <script>
-        // Your working backend URL
+        // Your backend URL - VERIFY THIS IS CORRECT
         const BACKEND_URL = 'https://linksafe-backend-a4lm.onrender.com';
         
         class LinkSafe {
@@ -202,17 +216,42 @@
 
             async checkBackend() {
                 const statusDiv = document.getElementById('status');
+                const debugDiv = document.getElementById('debugInfo');
+                
                 try {
-                    const response = await fetch(`${BACKEND_URL}/health`);
+                    statusDiv.innerHTML = '🔄 Testing backend connection...';
+                    statusDiv.style.background = '#f59e0b';
+                    
+                    const response = await fetch(`${BACKEND_URL}/health`, {
+                        mode: 'cors',
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    
                     if (response.ok) {
+                        const data = await response.json();
                         statusDiv.innerHTML = '✅ Backend Connected - Ready to Scan';
                         statusDiv.style.background = '#10b981';
+                        debugDiv.style.display = 'none';
                     } else {
-                        throw new Error('Backend error');
+                        throw new Error(`HTTP ${response.status}`);
                     }
                 } catch (error) {
-                    statusDiv.innerHTML = '⚠️ Backend Starting - First scan may take 20 seconds';
-                    statusDiv.style.background = '#f59e0b';
+                    console.error('Backend check failed:', error);
+                    statusDiv.innerHTML = '⚠️ Backend Connection Issue - Check URL below';
+                    statusDiv.style.background = '#ef4444';
+                    statusDiv.className = 'status error';
+                    
+                    debugDiv.style.display = 'block';
+                    debugDiv.innerHTML = `
+                        <strong>Debug Info:</strong><br>
+                        Backend URL: ${BACKEND_URL}<br>
+                        Error: ${error.message}<br>
+                        <br>
+                        <strong>Solution:</strong><br>
+                        1. Make sure backend is deployed: <a href="${BACKEND_URL}/health" target="_blank">Test Backend</a><br>
+                        2. If backend works but frontend doesn't, this is a CORS issue.<br>
+                        3. Try opening the backend URL directly in your browser first.
+                    `;
                 }
             }
 
@@ -243,26 +282,40 @@
                 try {
                     const response = await fetch(`${BACKEND_URL}/fetch-screen`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Accept': 'text/plain, image/png, */*'
+                        },
                         body: JSON.stringify({ url: url })
                     });
 
                     if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error || 'Failed to capture');
+                        const errorText = await response.text();
+                        let errorMsg;
+                        try {
+                            const errorJson = JSON.parse(errorText);
+                            errorMsg = errorJson.error || errorJson.details || 'Failed to capture';
+                        } catch(e) {
+                            errorMsg = errorText.substring(0, 100);
+                        }
+                        throw new Error(errorMsg);
                     }
 
                     const imgData = await response.text();
-                    this.screenshot = imgData;
                     
+                    if (!imgData.startsWith('data:image')) {
+                        throw new Error('Invalid response format');
+                    }
+                    
+                    this.screenshot = imgData;
                     document.getElementById('screenshot').src = imgData;
                     document.getElementById('urlInfo').innerHTML = `<strong>🔗 Scanned URL:</strong><br>${this.escapeHtml(url)}<br><br><small>⚠️ Always verify the website looks legitimate before entering any information</small>`;
                     document.getElementById('result').style.display = 'block';
-                    this.showAlert('✅ Screenshot captured safely! Review before clicking the actual link.', 'success');
+                    this.showAlert('✅ Screenshot captured safely! Review before clicking.', 'success');
                     
                 } catch (error) {
                     console.error('Scan error:', error);
-                    this.showAlert('❌ Failed to scan. Backend may be waking up. Try again in 30 seconds.', 'error');
+                    this.showAlert(`❌ Failed: ${error.message}. Make sure backend is running at ${BACKEND_URL}`, 'error');
                 } finally {
                     this.showLoading(false);
                 }
@@ -274,7 +327,7 @@
                     link.download = `linksafe-${Date.now()}.png`;
                     link.href = this.screenshot;
                     link.click();
-                    this.showAlert('💾 Evidence saved to your device', 'success');
+                    this.showAlert('💾 Evidence saved!', 'success');
                 }
             }
 
